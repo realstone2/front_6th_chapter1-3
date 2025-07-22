@@ -1,5 +1,5 @@
 import { type FunctionComponent } from "react";
-import { deepEquals, shallowEquals } from "../equals";
+import { deepEquals } from "../equals";
 import { useRef } from "../hooks";
 
 export function deepMemo<P extends object>(Component: FunctionComponent<P>, equals = deepEquals) {
