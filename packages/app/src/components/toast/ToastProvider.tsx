@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, memo, type PropsWithChildren, useCallback, useContext, useMemo, useReducer } from "react";
+import { createContext, memo, type PropsWithChildren, useContext, useMemo, useReducer } from "react";
 import { createPortal } from "react-dom";
 import { Toast } from "./Toast";
 import { createActions, initialState, toastReducer, type ToastType } from "./toastReducer";
