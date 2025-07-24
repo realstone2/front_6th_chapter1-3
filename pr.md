@@ -54,6 +54,57 @@
 
 ### 기술적 성장
 
+## useSyncExternalStore
+
+이번에 외부 스토어를 직접 구현해보면서 useSyncExternalStore를 사용해보았다.
+useSyncExternalStore 자체는 아주 간단하고 가벼운 내용이지만 왜 등장했는지부터, 어떤 문제를 해결하고자 했는지를 어떤 부작용이 있는지 깊게 학습해볼 수 있었다.
+
+### 왜 등장했는지
+
+react 18의 동시성 기능(Suspense, startTransition, streaming SSR)이 도입되면서, 렌더링 중에 일시 중지 하고 나중에 이어서 렌더링하는 기능이 생겨났다.
+
+하지만 이 때 외부 상태관리와 함께 사용하면 tearing라고 말하는 렌더링 상태 불일치가 발생한다.
+
+```
+// 컴포넌트 A와 B가 같은 외부 store를 읽음
+// React가 A만 먼저 렌더하다가 중간에 멈춤(yield)
+// 그 사이 외부 store 값이 변경됨
+// B는 최신값으로 렌더되지만 A는 이전값 → 불일치 발생
+```
+
+이 문제를 해결하기 위해 useSyncExternalStore 가 도입되었다.
+
+### 문제
+
+tearing문제는 해결되었지만 useSyncExternalStore는 동시성 렌더링과 올바르게 동작하지 않는다.
+
+zustand는 useSyncExternalStore기반으로 구성되어있다.
+
+zustand를 예시로 들어서 코드를 살펴보았다.
+https://codesandbox.io/p/sandbox/zustand-suspense-demo-forked-psqczj?file=%2Fsrc%2FApp.js%3A41%2C38
+
+해당 코드를 보면 suspense 대기까지 isPending으로 동작했어야했지만 isPending이 노출되지 않는다.
+
+useSyncExternalStore로부터 업데이트된 상태변경이 즉각반응하고 startTransition을 통해 업데이트 되었는지 알 수 없기 때문이다.
+
+### 대안? 트레이드 오프?
+
+반면에 jotai는 store를 useEffect로 구독하는 형태로 구성되어있다.
+useSyncExternalStore를 사용하지 않고 React 상태에 의존성을 두었다.
+
+zustand때와 거의 동일한 흐름의 코드이지만 isPending이 아주 잘 동작한다.
+https://codesandbox.io/p/sandbox/zustand-suspense-demo-forked-t2pqlr
+
+jotai는 react 상태 기반으로 state가 관리되기 때문에 startTransition을 통해서 의도된 렌더링 흐름이 흘러간다.
+
+그러나 당연히 그러면 그냥 외부스토어를 구독한 상태가 되니 처음에 발생했던 tearing 문제가 다시 발생한다.
+https://codesandbox.io/p/sandbox/react-tearing-jotai-wqwwqt?file=%2Fsrc%2FCounter.js%3A10%2C1
+
+https://blog.axlight.com/posts/why-use-sync-external-store-is-not-used-in-jotai/
+jotai 개발자 블로그글에 자세히 설명이 되어있다.
+
+결국 라이브러리마다 해결하고자 하는 방향이 있는거고 zustand와 jotai 모두 각각의 의도가 있는 것이다.
+
 <!-- 예시
 - 새로 학습한 개념
 - 기존 지식의 재발견/심화
@@ -61,6 +112,8 @@
 -->
 
 ### 자랑하고 싶은 코드
+
+PR을 자랑하고 싶습니다..
 
 <!-- 예시
 - 특히 만족스러운 구현
@@ -105,12 +158,48 @@
 
 ### 메모이제이션에 대한 나의 생각을 적어주세요.
 
-<!-- 예시
-- 메모이제이션이 언제 필요할까?
-- 메모이제이션을 사용하지 않으면 어떤 문제가 발생할까?
-- 메모이제이션을 사용했을 때의 장점과 단점은 무엇일까?
-- 메모이제이션을 사용하지 않고도 해결할 수 있는 방법은 무엇일까?
--->
+### 메모이제이션?
+
+리액트에서는 state, props, context가 변경되면 해당 컴포넌트에서 리렌더링이 발생하고 컴포넌트 안에 있는 모든 값들은 다시 재계산 된다.
+
+이 때 실제로 재계산이 필요한 경우에만 재계산하도록 하는 의도로 메모이제이션을 한다.
+
+## 사용하지 않았을 때 발생할 수 있는 문제
+
+만약에 props로 넘기는 변수가 object라면 리렌더링이 될 때 마다 재할당이 되고 당연히 메모리주소가 바뀌며 props가 변경되었다고 인식한다.
+
+만약 성능이 좋지 않은 list 아이템 컴포넌트에 props를 넘겼다면, 렌더링이 발생할 때 마다 list 아이템 컴포넌트를 재계산하는데 아주 큰 성능이슈가 발생하게 될 것이다.
+
+이 때 React.memo와 React.useMemo를 사용해서 불필요한 렌더링을 막을 수 있을 것이다.
+
+## 메모이제이션에 대한 장점, 단점, 나의 생각
+
+리액트에서 메모이제이션에 대한 논쟁은 핫하다.
+
+회사에서만해도 우리는 의견이 갈리고 있다.
+리드 개발자분의 의견은 어떤곳에는 쓰고 안쓰고 생각하는 고민 비용도 비싸고, 굳이 그럴 이유도 없다는 의견이다.
+애초에 비싼 계산을 하는 곳도 없고 문제도 없는 코드들이라는게 뻔히 보이는데 왜 넣어야되는지가 이해안된다.
+
+물론 어떤 맥락인지는 이해가 되지만 심적으로 불편하다..
+
+- 극단적으로 예시를 든 코드
+
+```jsx
+//메모를 해도 안해도 렌더링이 발생하는 곳에서 왜 항상 얕은 비교 코드를 불필요하게 실행시키는가!
+const [state, setState] = React.useState(0);
+
+const memoizedValue = useMemo(() => {
+  return state * 2; // 예시로 상태의 두 배를 계산
+}, [state]);
+return (
+  <div>
+    {memoizedValue}
+    <button onClick={() => setState(state + 1)}>Increment</button>
+  </div>
+);
+```
+
+결론은 생각하는 비용자체보다 그냥 다 쓰는게 더 저렴할 수 있다고는 하지만, 내가 생각하는 이상적인 메모이제이션은 느린 리렌더링이 발생하는 경우의 문제를 해결할 때 사용하면 된다고 생각한다.
 
 ### 컨텍스트와 상태관리에 대한 나의 생각을 적어주세요.
 
